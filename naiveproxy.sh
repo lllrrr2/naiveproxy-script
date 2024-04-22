@@ -69,7 +69,7 @@ installProxy(){
 
     mkdir /etc/caddy
     
-    read -rp "请输入需要用在NaiveProxy的端口 [回车随机分配端口]：" proxyport
+    read -rp "请输入需要用在 NaiveProxy 的端口 [回车随机分配端口]：" proxyport
     [[ -z $proxyport ]] && proxyport=$(shuf -i 2000-65535 -n 1)
     until [[ -z $(ss -ntlp | awk '{print $4}' | sed 's/.*://g' | grep -w "$proxyport") ]]; do
         if [[ -n $(ss -ntlp | awk '{print $4}' | sed 's/.*://g' | grep -w "$proxyport") ]]; then
@@ -78,29 +78,39 @@ installProxy(){
             [[ -z $proxyport ]] && proxyport=$(shuf -i 2000-65535 -n 1)
         fi
     done
-    read -rp "请输入需要用在Caddy监听的端口 [回车随机分配端口]：" proxyport
-    [[ -z $proxyport ]] && proxyport=$(shuf -i 2000-65535 -n 1)
-    until [[ -z $(ss -ntlp | awk '{print $4}' | sed 's/.*://g' | grep -w "$proxyport") ]]; do
-        if [[ -n $(ss -ntlp | awk '{print $4}' | sed 's/.*://g' | grep -w "$proxyport") ]]; then
+    yellow "将在 NaiveProxy 节点使用的端口是：$proxyport"
+
+    read -rp "请输入需要用在 Caddy 监听的端口 [回车随机分配端口]：" caddyport
+    [[ -z $caddyport ]] && caddyport=$(shuf -i 2000-65535 -n 1)
+    until [[ -z $(ss -ntlp | awk '{print $4}' | sed 's/.*://g' | grep -w "$caddyport") ]]; do
+        if [[ -n $(ss -ntlp | awk '{print $4}' | sed 's/.*://g' | grep -w "$caddyport") ]]; then
             echo -e "${RED} $proxyport ${PLAIN} 端口已经被其他程序占用，请更换端口重试！"
-            read -rp "请输入需要用在Caddy监听的端口 [回车随机分配端口]：" proxyport
-            [[ -z $proxyport ]] && proxyport=$(shuf -i 2000-65535 -n 1)
+            read -rp "请输入需要用在Caddy监听的端口 [回车随机分配端口]：" caddyport
+            [[ -z $caddyport ]] && caddyport=$(shuf -i 2000-65535 -n 1)
         fi
     done
-    yellow "将在NaiveProxy使用的端口是：$proxyport"
-    read -rp "请输入需要使用在NaiveProxy的域名：" domain
-    read -rp "请输入NaiveProxy的用户名 [回车随机生成]：" proxyname
+    yellow "将用在 Caddy 监听的端口是：$caddyport"
+    
+    read -rp "请输入需要使用在 NaiveProxy 的域名：" domain
+    yellow "使用在 NaiveProxy 节点的域名为：$domain"
+
+    read -rp "请输入 NaiveProxy 的用户名 [回车随机生成]：" proxyname
     [[ -z $proxyname ]] && proxyname=$(date +%s%N | md5sum | cut -c 1-16)
-    read -rp "请输入NaiveProxy的密码 [回车随机生成]：" proxypwd
+    yellow "使用在 NaiveProxy 节点的用户名为：$proxyname"
+
+    read -rp "请输入 NaiveProxy 的密码 [回车随机生成]：" proxypwd
     [[ -z $proxypwd ]] && proxypwd=$(date +%s%N | md5sum | cut -c 1-16)
-    read -rp "请输入NaiveProxy的伪装网站地址 （去除https://） [回车世嘉maimai日本网站]：" proxysite
+    yellow "使用在 NaiveProxy 节点的密码为：$proxypwd"
+
+    read -rp "请输入 NaiveProxy 的伪装网站地址 （去除https://） [回车世嘉maimai日本网站]：" proxysite
     [[ -z $proxysite ]] && proxysite="maimai.sega.jp"
+    yellow "使用在 NaiveProxy 节点的伪装网站为：$proxysite"
     
     cat << EOF >/etc/caddy/Caddyfile
 {
 http_port $caddyport
 }
-:$proxyport, $domain
+:$proxyport, $domain:$proxyport
 tls admin@seewo.com
 route {
  forward_proxy {
@@ -115,10 +125,11 @@ route {
   }
 }
 EOF
+
     mkdir /root/naive
     cat <<EOF > /root/naive/naive-client.json
 {
-  "listen": "socks://127.0.0.1:1080",
+  "listen": "socks://127.0.0.1:4080",
   "proxy": "https://${proxyname}:${proxypwd}@${domain}:${proxyport}",
   "log": ""
 }
@@ -151,16 +162,13 @@ EOF
     systemctl start caddy
 
     green "NaiveProxy 已安装成功！"
-    yellow "客户端配置文件已保存至 /root/naive/naive-client.json"
-    yellow "Qv2ray / SagerNet / Matsuri 分享链接已保存至 /root/naive/naive-url.txt"
-    yellow "SagerNet / Matsuri 分享二维码如下："
-    qrencode -o - -t ANSIUTF8 "$url"
+    showconf
 }
 
 uninstallProxy(){
     systemctl stop caddy
-    rm -rf /etc/caddy
-    rm -f /usr/bin/caddy /root/naive-client.json
+    rm -rf /etc/caddy /root/naive
+    rm -f /usr/bin/caddy
     green "NaiveProxy 已彻底卸载成功！"
 }
 
@@ -183,13 +191,13 @@ reloadProxy(){
 
 changeport(){
     oldport=$(cat /etc/caddy/Caddyfile | sed -n 4p | awk '{print $1}' | sed "s/://g" | sed "s/,//g")
-    read -rp "请输入需要用在NaiveProxy的端口 [回车随机分配端口]：" proxyport
+    read -rp "请输入需要用在 NaiveProxy 的端口 [回车随机分配端口]：" proxyport
     [[ -z $proxyport ]] && proxyport=$(shuf -i 2000-65535 -n 1)
     
     until [[ -z $(ss -ntlp | awk '{print $4}' | sed 's/.*://g' | grep -w "$proxyport") ]]; do
         if [[ -n $(ss -ntlp | awk '{print $4}' | sed 's/.*://g' | grep -w "$proxyport") ]]; then
             echo -e "${RED} $proxyport ${PLAIN} 端口已经被其他程序占用，请更换端口重试！"
-            read -rp "请输入需要用在NaiveProxy的端口 [回车随机分配端口]：" proxyport
+            read -rp "请输入需要用在 NaiveProxy 的端口 [回车随机分配端口]：" proxyport
             [[ -z $proxyport ]] && proxyport=$(shuf -i 2000-65535 -n 1)
         fi
     done
@@ -197,49 +205,72 @@ changeport(){
     sed -i "s#$oldport#$proxyport#g" /etc/caddy/Caddyfile
     sed -i "s#$oldport#$proxyport#g" /root/naive/naive-client.json
     sed -i "s#$oldport#$proxyport#g" /root/naive/naive-url.txt
+
     reloadProxy
+
+    green "NaiveProxy 节点端口已成功修改为：$port"
+    yellow "请手动更新客户端配置文件以使用节点"
+    showconf
 }
 
 
 changedomain(){
     olddomain=$(cat /etc/caddy/Caddyfile | sed -n 4p | awk '{print $2}')
-    read -rp "请输入需要使用在NaiveProxy的域名：" domain
+    read -rp "请输入需要使用在 NaiveProxy 的域名：" domain
 
     sed -i "s#$olddomain#$domain#g" /etc/caddy/Caddyfile
     sed -i "s#$olddomain#$domain#g" /root/naive/naive-client.json
     sed -i "s#$olddomain#$domain#g" /root/naive/naive-url.txt
+
     reloadProxy
+
+    green "NaiveProxy 节点域名已成功修改为：$domain"
+    yellow "请手动更新客户端配置文件以使用节点"
+    showconf
 }
 
 changeusername(){
     oldproxyname=$(cat /etc/caddy/Caddyfile | grep "basic_auth" | awk '{print $2}')
-    read -rp "请输入NaiveProxy的用户名 [回车随机生成]：" proxyname
+    read -rp "请输入 NaiveProxy 的用户名 [回车随机生成]：" proxyname
     [[ -z $proxyname ]] && proxyname=$(date +%s%N | md5sum | cut -c 1-16)
 
     sed -i "s#$oldproxyname#$proxyname#g" /etc/caddy/Caddyfile
     sed -i "s#$oldproxyname#$proxyname#g" /root/naive/naive-client.json
     sed -i "s#$oldproxyname#$proxyname#g" /root/naive/naive-url.txt
+
     reloadProxy
+
+    green "NaiveProxy 节点用户名已成功修改为：$proxyname"
+    yellow "请手动更新客户端配置文件以使用节点"
+    showconf
 }
 
 changepassword(){
     oldproxypwd=$(cat /etc/caddy/Caddyfile | grep "basic_auth" | awk '{print $3}')
-    read -rp "请输入NaiveProxy的密码 [回车随机生成]：" proxypwd
+    read -rp "请输入 NaiveProxy 的密码 [回车随机生成]：" proxypwd
     [[ -z $proxypwd ]] && proxypwd=$(date +%s%N | md5sum | cut -c 1-16)
 
     sed -i "s#$oldproxypwd#$proxypwd#g" /etc/caddy/Caddyfile
     sed -i "s#$oldproxypwd#$proxypwd#g" /root/naive/naive-client.json
     sed -i "s#$oldproxypwd#$proxypwd#g" /root/naive/naive-url.txt
+
     reloadProxy
+
+    green "NaiveProxy 节点密码已成功修改为：$proxypwd"
+    yellow "请手动更新客户端配置文件以使用节点"
+    showconf
 }
 
 changeproxysite(){
     oldproxysite=$(cat /etc/caddy/Caddyfile | grep "reverse_proxy" | awk '{print $2}' | sed "s/https:\/\///g")
-    read -rp "请输入NaiveProxy的伪装网站地址 （去除https://） [回车世嘉maimai日本网站]：" proxysite
+    read -rp "请输入 NaiveProxy 的伪装网站地址 （去除https://） [回车世嘉maimai日本网站]：" proxysite
     [[ -z $proxysite ]] && proxysite="maimai.sega.jp"
 
     sed -i "s#$oldproxysite#$proxysite#g" /etc/caddy/Caddyfile
+
     reloadProxy
+
+    green "NaiveProxy 节点伪装网站已成功修改为：$proxysite"
 }
 
 modifyConfig(){
@@ -250,7 +281,7 @@ modifyConfig(){
     echo -e " ${GREEN}4.${PLAIN} 修改密码"
     echo -e " ${GREEN}5.${PLAIN} 修改伪装站地址"
     echo ""
-    read -p " 请选择操作[1-5]：" confAnswer
+    read -p " 请选择操作 [1-5]：" confAnswer
     case $confAnswer in
         1 ) changeport ;;
         2 ) changedomain ;;
@@ -259,6 +290,15 @@ modifyConfig(){
         5 ) changeproxysite ;;
         * ) exit 1 ;;
     esac
+}
+
+showconf(){
+    yellow "客户端配置文件内容如下，并保存到 /root/naive/naive-client.json"
+    red "$(cat /root/naive/naive-client.json)"
+    yellow "Qv2ray / SagerNet / Matsuri 分享链接如下，并保存到 /root/naive/naive-url.txt"
+    red "$(cat /root/naive/naive-url.txt)"
+    yellow "SagerNet / Matsuri 分享二维码如下："
+    qrencode -o - -t ANSIUTF8 "$(cat /root/naive/naive-url.txt)"
 }
 
 menu(){
@@ -282,10 +322,11 @@ menu(){
     echo -e " ${GREEN}5.${PLAIN} 重载 NaiveProxy"
     echo " -------------"
     echo -e " ${GREEN}6.${PLAIN} 修改 NaiveProxy 配置"
+    echo -e " ${GREEN}7.${PLAIN} 查看 NaiveProxy 配置"
     echo " -------------"
     echo -e " ${GREEN}0.${PLAIN} 退出"
     echo ""
-    read -rp " 请输入选项 [0-6] ：" answer
+    read -rp " 请输入选项 [0-7] ：" answer
     case $answer in
         1) installProxy ;;
         2) uninstallProxy ;;
@@ -293,7 +334,8 @@ menu(){
         4) stopProxy ;;
         5) reloadProxy ;;
         6) modifyConfig ;;
-        *) red "请输入正确的选项 [0-6]！" && exit 1 ;;
+        7) showconf ;;
+        *) red "请输入正确的选项 [0-7]！" && exit 1 ;;
     esac
 }
 
